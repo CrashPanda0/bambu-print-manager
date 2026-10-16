@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {mkdtemp,rm,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=join(dirname(fileURLToPath(import.meta.url)),'..');
+for(const appOrigin of ['', 'https://druk.example.test'])test('serwer HTTP i reverse proxy: '+(appOrigin||'LAN'),async()=>{const dir=await mkdtemp(join(tmpdir(),'bambu-http-'));const child=spawn(process.execPath,['lan/server.mjs'],{cwd:root,env:{...process.env,DATA_DIR:dir,APP_ORIGIN:appOrigin,PORT:'0',HOST:'127.0.0.1'},stdio:['ignore','pipe','pipe']});try{const origin=await new Promise((resolve,reject)=>{let output='';const timer=setTimeout(()=>reject(Error('Server timeout')),10000);child.stdout.on('data',chunk=>{output+=chunk;const m=output.match(/http:\/\/127\.0\.0\.1:\d+/);if(m){clearTimeout(timer);resolve(m[0]);}});child.on('exit',code=>{clearTimeout(timer);reject(Error('Server exited '+code));});});
+ const page=await fetch(origin);assert.equal(page.status,200);assert.match(await page.text(),/Bambu Lab Print Manager/);for(const p of ['/styles.css','/app.js','/favicon.svg'])assert.equal((await fetch(origin+p)).status,200,p);assert.equal((await fetch(origin+'/not-found')).status,404);
+ const login=await fetch(origin+'/api/auth/setup',{method:'POST',headers:{'content-type':'application/json',origin:appOrigin||origin},body:JSON.stringify({username:'admin',name:'Test HTTP',password:'Test-password-123!'})});assert.equal(login.status,201);if(appOrigin)assert.match(login.headers.get('set-cookie'),/; Secure/);const cookie=login.headers.get('set-cookie').split(';')[0];const data=await fetch(origin+'/api/data',{headers:{cookie}});assert.equal(data.status,200);assert.equal((await data.json()).printers.length,3);assert.match(page.headers.get('content-security-policy'),/default-src 'self'/);
+ }finally{child.kill('SIGTERM');await new Promise(resolve=>{if(child.exitCode!=null)resolve();else child.once('exit',resolve);});await rm(dir,{recursive:true,force:true});}});

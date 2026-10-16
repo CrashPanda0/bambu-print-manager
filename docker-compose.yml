@@ -1,0 +1,18 @@
+services:
+  print-manager:
+    build: .
+    ports:
+      - "${PRINT_MANAGER_PORT:-3000}:3000"
+    volumes:
+      - print-manager-data:/app/data
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Europe/Warsaw
+      APP_ORIGIN: ${APP_ORIGIN:-}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  print-manager-data:
